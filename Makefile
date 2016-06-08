@@ -1,6 +1,6 @@
 PREFIX = /usr/local/
 LDLIBS = -lcurl
-CFLAGS = -std=gnu90 -pedantic -Wall -Wextra -Werror
+CFLAGS = -std=c90 -pedantic -Wall -Wextra -Werror
 OBJECTS = gcstream.o str_utils.o
 EXECUTABLE = gcstream
 

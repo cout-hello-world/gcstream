@@ -1,3 +1,5 @@
+#define _POSIX_C_SOURCE 200809L
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -7,6 +9,11 @@
 #include "str_utils.h"
 
 #define DEBUG 0
+
+#define CLIENT_ID "279340423993-vm2nq86ntcv8j2a0iih6ejuh7hcarsdf.apps.googleusercontent.com"
+#define CLIENT_SECRET "pB3HPEKTR3FLYAbYPw_MftO5"
+#define SCOPE "https://www.googleapis.com/auth/devstorage.read_write"
+
 
 /*
  * Precondition: curl_global_init() must have been called.
@@ -19,7 +26,7 @@ static int config(void)
 
 	CURL *curl = curl_easy_init();
 	if (curl) {
-		const char *data = "client_id=279340423993-vm2nq86ntcv8j2a0iih6ejuh7hcarsdf.apps.googleusercontent.com&scope=https://www.googleapis.com/auth/devstorage.read_write";
+		const char *data = "client_id=" CLIENT_ID "&scope=" SCOPE;
 		const char *url = "https://accounts.google.com/o/oauth2/device/code";
 		CURLcode code = CURLE_OK;
 		char *response = NULL;
@@ -36,12 +43,49 @@ static int config(void)
 		code = curl_easy_perform(curl);
 		fclose(mem_file);
 		if (code == CURLE_OK) {
-			size_t len;
-			char *user_code = json_get_value_string(&len, response,
+			size_t user_code_len;
+			size_t device_code_len;
+			char *user_code = json_get_value_string(&user_code_len, response,
 			                                        "user_code");
-			puts("Enter user code: ");
-			fwrite(user_code, 1, len, stdout);
-			puts("\nat https://www.google.com/device");
+			char *device_code = json_get_value_string(&device_code_len,
+			                                          response, "device_code");
+			if (user_code && device_code) {
+
+				char *request = NULL;
+				size_t request_size = 0;
+
+				puts("Enter user code:");
+				fwrite(user_code, 1, user_code_len, stdout);
+				puts("\nat https://www.google.com/device");
+				puts("\nOnce you have given this application permissions, "
+				     "press return.");
+
+				getchar();
+
+				{
+					FILE *request_builder = open_memstream(&request, &request_size);
+					fprintf(request_builder, "client_id=" CLIENT_ID "&");
+					fprintf(request_builder, "client_secret=" CLIENT_SECRET "&");
+					fprintf(request_builder, "code=");
+					fwrite(device_code, 1, device_code_len, request_builder);
+					fprintf(request_builder,
+					"&grant_type=http://oauth.net/grant_type/device/1.0");
+					fclose(mem_file);
+				}
+				
+				url = "https://www.googleapis.com/oauth2/v4/token";
+
+				curl_easy_setopt(curl, CURLOPT_URL, url);
+				curl_easy_setopt(curl, CURLOPT_POSTFIELDS, request);
+				curl_easy_setopt(curl, CURLOPT_WRITEDATA, stdout);
+
+				curl_easy_perform(curl);
+				free(request); /* Must wait until after transfer to free. */
+
+			} else {
+				fprintf(stderr, "Error in initial config response\n");
+				return_val = EXIT_FAILURE;
+			}
 		} else {
 			fprintf(stderr, "Error sending initial config request.\n");
 			return_val = EXIT_FAILURE;
